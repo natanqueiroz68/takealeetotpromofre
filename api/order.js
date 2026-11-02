@@ -17,6 +17,13 @@ const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_
 const fs = require('fs');
 const path = require('path');
 
+const {
+  processOrderDailyEmail,
+  STAGES,
+  calculateSADaysElapsed,
+  getSADateIso,
+} = require('./cron.js');
+
 // Upstash REST helpers
 async function kv_get(key) {
   if (!REDIS_URL || !REDIS_TOKEN) return null;
@@ -94,6 +101,23 @@ function formatOrderDateShort(dateVal) {
     month: 'short',
     year: 'numeric',
   }).format(d);
+}
+
+function formatOrderDateUpper(dateVal) {
+  const d = typeof dateVal === 'string' || typeof dateVal === 'number' ? new Date(dateVal) : dateVal;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TIMEZONE,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).formatToParts(d);
+  let day = '', month = '', year = '';
+  for (const p of parts) {
+    if (p.type === 'day') day = p.value;
+    if (p.type === 'month') month = p.value.toUpperCase();
+    if (p.type === 'year') year = p.value;
+  }
+  return `${day} ${month} ${year}`.trim();
 }
 
 function formatDeliveryDateLong(dateVal) {
@@ -204,14 +228,14 @@ async function ensureEmailSent(order, force = false) {
     const d = new Date(order.received_date || Date.now());
     const del = new Date(order.delivery_date || (d.getTime() + 8 * 86400000));
     const orderDateShort = formatOrderDateShort(d);
-    const deliveryDateIso = del.toISOString().slice(0, 10);
+    const deliveryDateShort = formatDeliveryDateShort(del);
     const deliveryDateLong = formatDeliveryDateLong(del);
 
     html = template
       .replace(/\{\{customer_name\}\}/g, order.customer_name || 'Customer')
       .replace(/\{\{order_number\}\}/g, order.order_id)
       .replace(/\{\{order_date\}\}/g, orderDateShort)
-      .replace(/\{\{delivery_date\}\}/g, deliveryDateIso)
+      .replace(/\{\{delivery_date\}\}/g, deliveryDateShort)
       .replace(/\{\{delivery_date_long\}\}/g, deliveryDateLong)
       .replace(/\{\{variant\}\}/g, 'Premium Black');
   } catch (err) {
@@ -299,17 +323,18 @@ function publicView(order) {
   const dDate = new Date(order.delivery_date || (pDate.getTime() + 8 * 86400000));
   return {
     order_id:                order.order_id,
-    product_name:            order.product_name,
-    product_price:           order.product_price,
-    currency:                order.currency,
-    product_image:           order.product_image,
-    received_date:           order.received_date,
-    delivery_date:           order.delivery_date,
+    product_name:            order.product_name || 'Hisense 14kg Top Loader Washing Machine',
+    product_price:           order.product_price || 999,
+    currency:                order.currency || 'ZAR',
+    received_date:           order.received_date || pDate.toISOString(),
+    delivery_date:           order.delivery_date || dDate.toISOString(),
+    order_date_upper:        formatOrderDateUpper(pDate),
     order_date_formatted:    formatOrderDateShort(pDate),
     delivery_date_formatted: formatDeliveryDateShort(dDate),
     delivery_date_long:      formatDeliveryDateLong(dDate),
     tracking_url:            order.tracking_url,
-    status:                  order.status,
+    status:                  order.status || 'PROCESSING',
+    product_image:           order.product_image || 'https://takealotpromos-black.vercel.app/produto.png',
     email_status:            order.email_status || null,
     email_sent_at:           order.email_sent_at || null,
     status_history: (order.status_history || []).map(function(e) {
@@ -390,10 +415,19 @@ module.exports = async function handler(req, res) {
 
     if (order) {
       // Existing order: PRESERVE original purchase date immutably
-      if (order.received_date && !order.delivery_date) {
+      if (order.received_date) {
         const rec = new Date(order.received_date);
         if (!isNaN(rec.getTime())) {
-          order.delivery_date = new Date(rec.getTime() + 8 * 86400000).toISOString();
+          if (!order.delivery_date) {
+            order.delivery_date = new Date(rec.getTime() + 8 * 86400000).toISOString();
+          }
+          // Dynamic status for existing orders based on time elapsed (Africa/Johannesburg SAST)
+          const daysElapsed = calculateSADaysElapsed(rec);
+          if (daysElapsed >= 8 && order.status !== 'CANCELLED') {
+            order.status = 'DELIVERED';
+          } else if (daysElapsed >= 1 && order.status === 'PROCESSING') {
+            order.status = 'IN_TRANSIT';
+          }
           if (REDIS_URL && REDIS_TOKEN) {
             kv_set('order:' + orderId, order).catch(() => {});
           }
@@ -414,9 +448,9 @@ module.exports = async function handler(req, res) {
       const purchaseIso = purchaseDate.toISOString();
       const deliveryIso = new Date(purchaseDate.getTime() + 8 * 86400000).toISOString();
 
-      const daysElapsed = Math.floor((Date.now() - purchaseDate.getTime()) / 86400000);
+      const daysElapsed = calculateSADaysElapsed(purchaseDate);
       let calculatedStatus = 'PROCESSING';
-      if (daysElapsed >= 4 && daysElapsed < 7) calculatedStatus = 'IN_TRANSIT';
+      if (daysElapsed >= 1 && daysElapsed < 7) calculatedStatus = 'IN_TRANSIT';
       else if (daysElapsed >= 7 && daysElapsed < 8) calculatedStatus = 'OUT_FOR_DELIVERY';
       else if (daysElapsed >= 8) calculatedStatus = 'DELIVERED';
 
@@ -456,12 +490,51 @@ module.exports = async function handler(req, res) {
     if (req.query.name) order.customer_name = req.query.name.trim();
   }
 
+  // Handle on-demand stage sending: ?send_stage=N or ?stage=N
+  let stageSendResult = null;
+  const stageParam = req.query.send_stage !== undefined ? req.query.send_stage : req.query.stage;
+  if (stageParam !== undefined && stageParam !== '') {
+    const stgNum = Number(stageParam);
+    if (!isNaN(stgNum)) {
+      stageSendResult = await processOrderDailyEmail(order, { force: true, stageOverride: stgNum });
+    }
+  }
+
+  // Auto notify: ?auto_notify=1 checks and sends today's daily email if pending
+  let autoNotifyResult = null;
+  if (req.query.auto_notify === '1' && order.customer_email) {
+    const pDate = new Date(order.received_date || order.created_at || Date.now());
+    const daysElapsed = calculateSADaysElapsed(pDate);
+    if (daysElapsed === 0) {
+      if (order.email_status !== 'SENT') {
+        await ensureEmailSent(order, false);
+      }
+    } else if (daysElapsed >= 1 && daysElapsed <= 8) {
+      const todaySA = getSADateIso(new Date());
+      if (order.last_daily_email_date !== todaySA) {
+        autoNotifyResult = await processOrderDailyEmail(order, { force: false });
+      }
+    } else if (daysElapsed >= 9 && order.status !== 'DELIVERED') {
+      order.status = 'DELIVERED';
+      order.email_delivered_status = 'SENT';
+      if (REDIS_URL && REDIS_TOKEN) {
+        kv_set('order:' + order.order_id, order).catch(() => {});
+      }
+    }
+  }
+
   let sentResult = null;
   if (order.email_status !== 'SENT' || forceResend) {
     sentResult = await ensureEmailSent(order, true);
   }
 
   const responseData = publicView(order);
+  if (stageSendResult) {
+    responseData.stage_sent = stageSendResult;
+  }
+  if (autoNotifyResult) {
+    responseData.auto_notify_result = autoNotifyResult;
+  }
   if (isLatest || forceResend) {
     responseData.email_triggered = true;
     responseData.email_sent_now = sentResult;
@@ -476,3 +549,47 @@ module.exports = async function handler(req, res) {
 
   return res.status(200).json(responseData);
 };
+
+// Send specific or stage-based order email on demand
+async function sendOrderStatusEmail(order, statusType, force = false) {
+  if (!order || !order.customer_email) return false;
+
+  // Day 0: payment confirmation
+  if (!statusType || statusType === 'CONFIRMATION' || statusType === 'PAID' || statusType === 0 || statusType === '0') {
+    return await ensureEmailSent(order, force);
+  }
+
+  // Daily stages 1 to 8:
+  let stageNum = null;
+  if (typeof statusType === 'number') {
+    stageNum = statusType;
+  } else if (!isNaN(Number(statusType))) {
+    stageNum = Number(statusType);
+  } else {
+    const s = String(statusType).toUpperCase();
+    if (s === 'PACKED') stageNum = 1;
+    else if (s === 'SHIPPED') stageNum = 2;
+    else if (s === 'IN_TRANSIT') stageNum = 3;
+    else if (s === 'REGIONAL_HUB') stageNum = 4;
+    else if (s === 'SORTING') stageNum = 5;
+    else if (s === 'LOCAL_DEPOT' || s === 'DEPOT') stageNum = 6;
+    else if (s === 'OUT_FOR_DELIVERY' || s === 'TOMORROW') stageNum = 7;
+    else if (s === 'DELIVERED') stageNum = 8;
+  }
+
+  if (stageNum !== null && stageNum >= 1 && stageNum <= 8) {
+    const res = await processOrderDailyEmail(order, { force, stageOverride: stageNum });
+    return !!(res && res.action && res.action.startsWith('SENT_STAGE_'));
+  }
+
+  // Fallback: calculate automatically from elapsed SAST days
+  const autoRes = await processOrderDailyEmail(order, { force });
+  return !!(autoRes && autoRes.action && autoRes.action.startsWith('SENT_STAGE_'));
+}
+
+module.exports.sendOrderStatusEmail = sendOrderStatusEmail;
+module.exports.ensureEmailSent = ensureEmailSent;
+module.exports.publicView = publicView;
+module.exports.calculateSADaysElapsed = calculateSADaysElapsed;
+module.exports.getSADateIso = getSADateIso;
+

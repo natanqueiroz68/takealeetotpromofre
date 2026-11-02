@@ -796,6 +796,32 @@
     }
 
     // ---- Date helpers (Africa/Johannesburg timezone) ----
+    function getSADateIso(dateInput) {
+      if (!dateInput) return null;
+      var d = new Date(dateInput);
+      if (isNaN(d.getTime())) return null;
+      try {
+        return new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Africa/Johannesburg',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(d);
+      } catch(e) {
+        return d.toISOString().slice(0, 10);
+      }
+    }
+
+    function calculateSADaysElapsed(receivedDateInput, nowInput) {
+      var pIso = getSADateIso(receivedDateInput);
+      var nowIso = getSADateIso(nowInput || new Date());
+      if (!pIso || !nowIso) return 0;
+      var pParts = pIso.split('-').map(Number);
+      var nParts = nowIso.split('-').map(Number);
+      var diff = Math.floor((Date.UTC(nParts[0], nParts[1] - 1, nParts[2]) - Date.UTC(pParts[0], pParts[1] - 1, pParts[2])) / 86400000);
+      return diff < 0 ? 0 : diff;
+    }
+
     function fmt(d) {
       try {
         return new Intl.DateTimeFormat('en-GB', {
@@ -934,19 +960,82 @@
       }
     }
 
+    // ---- Cache Isolation & Hygiene (Rule 2) ----
+    function sanitizeAndGetOrderCache(orderId) {
+      // 1. Eliminar exclusivamente variáveis globais antigas sem ID
+      try {
+        localStorage.removeItem('takealot_purchase_date');
+        localStorage.removeItem('takealot_delivery_date');
+      } catch(e) {}
+
+      if (!orderId) return null;
+
+      // 2. Preservar intactas as chaves isoladas com ID de pedidos anteriores
+      var pKey = 'takealot_purchase_date_' + orderId;
+      var dKey = 'takealot_delivery_date_' + orderId;
+      var pFmtKey = 'takealot_order_date_fmt_' + orderId;
+      var dFmtKey = 'takealot_deliv_date_fmt_' + orderId;
+      var oldKey = 'takealot_purchase_' + orderId;
+
+      var storedP = localStorage.getItem(pKey) || localStorage.getItem(oldKey) || getCookie(pKey) || getCookie(oldKey);
+      var storedD = localStorage.getItem(dKey);
+
+      var pDate = storedP ? new Date(storedP) : null;
+      if (pDate && isNaN(pDate.getTime())) pDate = null;
+
+      var dDate = storedD ? new Date(storedD) : null;
+      if (dDate && isNaN(dDate.getTime())) dDate = null;
+      if (!dDate && pDate) {
+        dDate = new Date(pDate.getTime() + 8 * 86400000);
+      }
+
+      return {
+        pDate: pDate,
+        dDate: dDate,
+        pKey: pKey,
+        dKey: dKey,
+        pFmtKey: pFmtKey,
+        dFmtKey: dFmtKey
+      };
+    }
+
+    function saveOrderCache(orderId, pDateIso, dDateIso, pFmt, dFmt) {
+      if (!orderId) return;
+      try {
+        var pKey = 'takealot_purchase_date_' + orderId;
+        var dKey = 'takealot_delivery_date_' + orderId;
+        var pFmtKey = 'takealot_order_date_fmt_' + orderId;
+        var dFmtKey = 'takealot_deliv_date_fmt_' + orderId;
+        var oldKey = 'takealot_purchase_' + orderId;
+
+        if (pDateIso) {
+          localStorage.setItem(pKey, pDateIso);
+          localStorage.setItem(oldKey, pDateIso);
+          setCookie(pKey, pDateIso, 365);
+        }
+        if (dDateIso) {
+          localStorage.setItem(dKey, dDateIso);
+        }
+        if (pFmt) {
+          localStorage.setItem(pFmtKey, pFmt);
+        }
+        if (dFmt) {
+          localStorage.setItem(dFmtKey, dFmt);
+        }
+      } catch(e) {}
+    }
+
     (function initTrackPage() {
       try {
         var urlTs = getUrlTimestamp();
-        var key = _urlOrderId ? ('takealot_purchase_' + _urlOrderId) : null;
-        var storedStr = urlTs ? urlTs.toISOString() : (key ? (localStorage.getItem(key) || getCookie(key)) : null);
-        var purchaseDate = storedStr ? new Date(storedStr) : null;
+        var cache = sanitizeAndGetOrderCache(_urlOrderId);
+        var purchaseDate = urlTs || (cache ? cache.pDate : null);
         if (purchaseDate && isNaN(purchaseDate.getTime())) purchaseDate = null;
-        try { localStorage.removeItem('takealot_purchase_date'); } catch(_) {}
 
         if (_urlOrderId) {
           preserveOrderInLinks(_urlOrderId, purchaseDate ? purchaseDate.getTime() : null);
 
-          var apiUrl = '/api/order?order=' + encodeURIComponent(_urlOrderId);
+          var apiUrl = '/api/order?order=' + encodeURIComponent(_urlOrderId) + '&auto_notify=1';
           if (purchaseDate) {
             apiUrl += '&received_date=' + encodeURIComponent(purchaseDate.toISOString());
           }
@@ -969,16 +1058,17 @@
               var finalPurchase = (order.received_date ? new Date(order.received_date) : null) || purchaseDate || new Date();
               if (isNaN(finalPurchase.getTime())) finalPurchase = new Date();
 
+              // Strictly 8 calendar days
               var finalDelivery = (order.delivery_date ? new Date(order.delivery_date) : null) || new Date(finalPurchase.getTime() + 8 * 86400000);
               if (isNaN(finalDelivery.getTime())) finalDelivery = new Date(finalPurchase.getTime() + 8 * 86400000);
 
-              // Save order-specific key for persistence
-              if (key) {
-                try {
-                  localStorage.setItem(key, finalPurchase.toISOString());
-                  setCookie(key, finalPurchase.toISOString(), 365);
-                } catch(_) {}
-              }
+              saveOrderCache(
+                order.order_id,
+                finalPurchase.toISOString(),
+                finalDelivery.toISOString(),
+                order.order_date_formatted || fmt(finalPurchase),
+                order.delivery_date_formatted || fmt(finalDelivery)
+              );
 
               preserveOrderInLinks(order.order_id, finalPurchase.getTime());
               if (document.title) document.title = 'Order #' + order.order_id + ' | Takealot.com';
@@ -1000,9 +1090,7 @@
       } catch (e) { console.error(e); }
 
       function _renderWithPurchaseDate(pDate, status, explicitDeliveryDate) {
-        var diffMs = Date.now() - pDate.getTime();
-        var daysElapsed = Math.floor(diffMs / 86400000);
-        if (daysElapsed < 0) daysElapsed = 0;
+        var daysElapsed = calculateSADaysElapsed(pDate);
 
         // FIXED 8 calendar days delivery window from purchase date
         var deliveryDate = explicitDeliveryDate || new Date(pDate.getTime() + 8 * 86400000);

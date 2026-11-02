@@ -630,10 +630,74 @@
         }
       }
 
+      // ---- Cache Isolation & Hygiene (Rule 2) ----
+      function sanitizeAndGetOrderCache(orderId) {
+        // 1. Eliminar exclusivamente variáveis globais antigas sem ID
+        try {
+          localStorage.removeItem('takealot_purchase_date');
+          localStorage.removeItem('takealot_delivery_date');
+        } catch(e) {}
+
+        if (!orderId) return null;
+
+        // 2. Preservar intactas as chaves isoladas com ID de pedidos anteriores
+        var pKey = 'takealot_purchase_date_' + orderId;
+        var dKey = 'takealot_delivery_date_' + orderId;
+        var pFmtKey = 'takealot_order_date_fmt_' + orderId;
+        var dFmtKey = 'takealot_deliv_date_fmt_' + orderId;
+        var oldKey = 'takealot_purchase_' + orderId;
+
+        var storedP = localStorage.getItem(pKey) || localStorage.getItem(oldKey) || getCookie(pKey) || getCookie(oldKey);
+        var storedD = localStorage.getItem(dKey);
+
+        var pDate = storedP ? new Date(storedP) : null;
+        if (pDate && isNaN(pDate.getTime())) pDate = null;
+
+        var dDate = storedD ? new Date(storedD) : null;
+        if (dDate && isNaN(dDate.getTime())) dDate = null;
+        if (!dDate && pDate) {
+          dDate = new Date(pDate.getTime() + 8 * 86400000);
+        }
+
+        return {
+          pDate: pDate,
+          dDate: dDate,
+          pKey: pKey,
+          dKey: dKey,
+          pFmtKey: pFmtKey,
+          dFmtKey: dFmtKey
+        };
+      }
+
+      function saveOrderCache(orderId, pDateIso, dDateIso, pFmt, dFmt) {
+        if (!orderId) return;
+        try {
+          var pKey = 'takealot_purchase_date_' + orderId;
+          var dKey = 'takealot_delivery_date_' + orderId;
+          var pFmtKey = 'takealot_order_date_fmt_' + orderId;
+          var dFmtKey = 'takealot_deliv_date_fmt_' + orderId;
+          var oldKey = 'takealot_purchase_' + orderId;
+
+          if (pDateIso) {
+            localStorage.setItem(pKey, pDateIso);
+            localStorage.setItem(oldKey, pDateIso);
+            setCookie(pKey, pDateIso, 365);
+          }
+          if (dDateIso) {
+            localStorage.setItem(dKey, dDateIso);
+          }
+          if (pFmt) {
+            localStorage.setItem(pFmtKey, pFmt);
+          }
+          if (dFmt) {
+            localStorage.setItem(dFmtKey, dFmt);
+          }
+        } catch(e) {}
+      }
+
       var urlOrderId = getOrGenerateOrderId();
 
       if (urlOrderId) {
-        var key = 'takealot_purchase_' + urlOrderId;
         var searchParams = new URLSearchParams(window.location.search);
         var pFromUrl = searchParams.get('p') || searchParams.get('received_date') || searchParams.get('date');
         var urlDate = null;
@@ -643,15 +707,18 @@
           if (!isNaN(parsed.getTime())) urlDate = parsed;
         }
 
-        var stored = localStorage.getItem(key) || getCookie(key);
-        var purchaseDate = urlDate || (stored ? new Date(stored) : new Date());
+        var cache = sanitizeAndGetOrderCache(urlOrderId);
+        var purchaseDate = urlDate || (cache ? cache.pDate : null) || new Date();
         if (isNaN(purchaseDate.getTime())) purchaseDate = new Date();
 
-        try {
-          localStorage.removeItem('takealot_purchase_date');
-          localStorage.setItem(key, purchaseDate.toISOString());
-          setCookie(key, purchaseDate.toISOString(), 365);
-        } catch(_) {}
+        var initialDelivery = new Date(purchaseDate.getTime() + 8 * 86400000);
+        saveOrderCache(
+          urlOrderId,
+          purchaseDate.toISOString(),
+          initialDelivery.toISOString(),
+          fmt(purchaseDate),
+          fmt(initialDelivery)
+        );
 
         if (onEl) onEl.textContent = '#' + urlOrderId;
         preserveOrderInLinks(urlOrderId, purchaseDate.getTime());
@@ -679,23 +746,25 @@
             var finalPurchase = order.received_date ? new Date(order.received_date) : purchaseDate;
             if (isNaN(finalPurchase.getTime())) finalPurchase = purchaseDate;
 
+            var finalDelivery = order.delivery_date ? new Date(order.delivery_date) : new Date(finalPurchase.getTime() + 8 * 86400000);
+            if (isNaN(finalDelivery.getTime())) finalDelivery = new Date(finalPurchase.getTime() + 8 * 86400000);
+
             if (odEl) odEl.textContent = finalOrderDateStr || fmt(finalPurchase);
-            if (ddEl) {
-              if (finalDelivDateStr) {
-                ddEl.textContent = finalDelivDateStr;
-              } else {
-                var finalDelivery = order.delivery_date ? new Date(order.delivery_date) : new Date(finalPurchase.getTime() + 8 * 86400000);
-                ddEl.textContent = fmt(finalDelivery);
-              }
-            }
+            if (ddEl) ddEl.textContent = finalDelivDateStr || fmt(finalDelivery);
+
             if (order.product_image) {
               var img = document.querySelector('.product-img');
               if (img) img.src = order.product_image;
             }
-            try {
-              localStorage.setItem(key, finalPurchase.toISOString());
-              setCookie(key, finalPurchase.toISOString(), 365);
-            } catch(_) {}
+
+            saveOrderCache(
+              order.order_id,
+              finalPurchase.toISOString(),
+              finalDelivery.toISOString(),
+              finalOrderDateStr || fmt(finalPurchase),
+              finalDelivDateStr || fmt(finalDelivery)
+            );
+
             preserveOrderInLinks(order.order_id, finalPurchase.getTime());
           })
           .catch(function() {
@@ -710,22 +779,18 @@
       _setFallbackDates(fmt, odEl, ddEl);
 
       function _setFallbackDates(fmt, odEl, ddEl, oid, explicitDate) {
-        var key = oid ? ('takealot_purchase_' + oid) : null;
         var pDate = explicitDate;
-        if (!pDate && key) {
-          var stored = localStorage.getItem(key) || getCookie(key);
-          pDate = stored ? new Date(stored) : null;
+        if (!pDate && oid) {
+          var c = sanitizeAndGetOrderCache(oid);
+          pDate = c ? c.pDate : null;
         }
         if (!pDate) pDate = new Date();
         if (isNaN(pDate.getTime())) pDate = new Date();
 
-        if (key) {
-          try {
-            localStorage.setItem(key, pDate.toISOString());
-            setCookie(key, pDate.toISOString(), 365);
-          } catch(_) {}
-        }
         var deliveryDate = new Date(pDate.getTime() + 8 * 86400000);
+        if (oid) {
+          saveOrderCache(oid, pDate.toISOString(), deliveryDate.toISOString(), fmt(pDate), fmt(deliveryDate));
+        }
         if (odEl) odEl.textContent = fmt(pDate);
         if (ddEl) ddEl.textContent = fmt(deliveryDate);
       }

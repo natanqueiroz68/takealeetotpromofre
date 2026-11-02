@@ -1361,13 +1361,26 @@
           });
         }
         try {
-          var storedPurchase = localStorage.getItem("takealot_purchase_" + orderId);
-          var purchaseDate = storedPurchase ? new Date(storedPurchase) : new Date();
-          if (isNaN(purchaseDate.getTime())) purchaseDate = new Date();
-
           localStorage.removeItem("takealot_purchase_date");
-          localStorage.setItem("takealot_purchase_" + orderId, purchaseDate.toISOString());
-          document.cookie = "takealot_purchase_" + orderId + "=" + encodeURIComponent(purchaseDate.toISOString()) + ";path=/;max-age=315360000";
+          localStorage.removeItem("takealot_delivery_date");
+
+          var pKey = "takealot_purchase_date_" + orderId;
+          var stored = localStorage.getItem(pKey) || localStorage.getItem("takealot_purchase_" + orderId);
+          var pDate = stored ? new Date(stored) : null;
+          if (!pDate || isNaN(pDate.getTime())) {
+            pDate = new Date();
+          }
+          var dDate = new Date(pDate.getTime() + 8 * 86400000);
+          var fmtShort = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Johannesburg', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+          var orderDateFmt = fmtShort.format(pDate);
+          var delivDateFmt = fmtShort.format(dDate);
+
+          localStorage.setItem(pKey, pDate.toISOString());
+          localStorage.setItem("takealot_delivery_date_" + orderId, dDate.toISOString());
+          localStorage.setItem("takealot_order_date_fmt_" + orderId, orderDateFmt);
+          localStorage.setItem("takealot_deliv_date_fmt_" + orderId, delivDateFmt);
+          localStorage.setItem("takealot_purchase_" + orderId, pDate.toISOString());
+          document.cookie = "takealot_purchase_" + orderId + "=" + encodeURIComponent(pDate.toISOString()) + ";path=/;max-age=315360000";
         } catch(err) {}
         window.location.href = getCheckoutUrl();
       });
