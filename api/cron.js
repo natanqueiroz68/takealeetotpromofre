@@ -486,21 +486,43 @@ module.exports = async function handler(req, res) {
   const targetOrderId = (req.query.order || req.query.id || '').trim();
   const todaySA = getSADateIso(new Date());
 
-  if (!REDIS_URL || !REDIS_TOKEN) {
-    return res.status(500).json({ error: 'Redis environment variables not configured' });
-  }
-
   const template = loadBaseEmailTemplate() || '';
 
   try {
     let ordersToProcess = [];
 
-    if (targetOrderId) {
+    if (!REDIS_URL || !REDIS_TOKEN) {
+      if (targetOrderId && req.query.to) {
+        ordersToProcess = [{
+          order_id: targetOrderId,
+          customer_name: (req.query.name || 'Customer').trim(),
+          customer_email: req.query.to.trim(),
+          received_date: req.query.date || req.query.received_date || new Date().toISOString()
+        }];
+      } else {
+        return res.status(503).json({
+          ok: false,
+          error: 'Redis environment variables not configured in Vercel',
+          message: 'Please add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in your Vercel Project Settings > Environment Variables.',
+          tip: 'You can test a single order immediately via: /api/cron?order=T123456&to=your@email.com&stage=2&force=1'
+        });
+      }
+    } else if (targetOrderId) {
       const single = await kv_get('order:' + targetOrderId);
       if (!single) {
-        return res.status(404).json({ error: `Order #${targetOrderId} not found in database` });
+        if (req.query.to) {
+          ordersToProcess = [{
+            order_id: targetOrderId,
+            customer_name: (req.query.name || 'Customer').trim(),
+            customer_email: req.query.to.trim(),
+            received_date: req.query.date || req.query.received_date || new Date().toISOString()
+          }];
+        } else {
+          return res.status(404).json({ error: `Order #${targetOrderId} not found in database` });
+        }
+      } else {
+        ordersToProcess = [single];
       }
-      ordersToProcess = [single];
     } else {
       const resKeys = await fetch(REDIS_URL, {
         method: 'POST',
