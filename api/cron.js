@@ -12,8 +12,17 @@
 
 'use strict';
 
-const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || process.env.REDIS_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || process.env.REDIS_TOKEN;
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL
+  || process.env.UPSTASH_REDIS_REST_URL
+  || process.env.KV_REST_API_URL
+  || process.env.REDIS_URL
+  || 'https://major-oriole-190689.upstash.io';
+
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN
+  || process.env.UPSTASH_REDIS_REST_TOKEN
+  || process.env.KV_REST_API_TOKEN
+  || process.env.REDIS_TOKEN
+  || 'gQAAAAAAAujhAAIgcDE1YmEzYTI1OWViYzU0YzVhYjA2NTFiZmNjZTc1ZTJiNw';
 
 const VISIONSPY_KEY = process.env.VISIONSPY_API_KEY
   || process.env.VISION_SPY_API_KEY

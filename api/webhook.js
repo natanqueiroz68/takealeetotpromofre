@@ -19,9 +19,19 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-const SECRET      = process.env.WEBHOOK_SECRET;
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL
+  || process.env.UPSTASH_REDIS_REST_URL
+  || process.env.KV_REST_API_URL
+  || process.env.REDIS_URL
+  || 'https://major-oriole-190689.upstash.io';
+
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN
+  || process.env.UPSTASH_REDIS_REST_TOKEN
+  || process.env.KV_REST_API_TOKEN
+  || process.env.REDIS_TOKEN
+  || 'gQAAAAAAAujhAAIgcDE1YmEzYTI1OWViYzU0YzVhYjA2NTFiZmNjZTc1ZTJiNw';
+
+const SECRET = process.env.WEBHOOK_SECRET;
 
 // ── Vercel config: MUST disable body parser to access raw bytes for HMAC ──────
 // If bodyParser is enabled (default), req loses the original byte stream and
