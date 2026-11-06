@@ -23,13 +23,13 @@ const REDIS_URL = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL
   || process.env.UPSTASH_REDIS_REST_URL
   || process.env.KV_REST_API_URL
   || process.env.REDIS_URL
-  || 'https://equal-lamb-246910.upstash.io';
+  || 'https://guided-newt-193797.upstash.io';
 
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN
   || process.env.UPSTASH_REDIS_REST_TOKEN
   || process.env.KV_REST_API_TOKEN
   || process.env.REDIS_TOKEN
-  || 'gQAAAAAAA8R-AAIgcDI1YzAxYjM3NjQwNmM0MTAyYmIzZmRlOTQ4NGQzOGM4Yg';
+  || 'gQAAAAAAAvUFAAIgcDIwOWJjN2I2MTc1Nzk0MjNiOGQwYmY0ODFiOGJhNjJkOA';
 
 const SECRET = process.env.WEBHOOK_SECRET;
 
