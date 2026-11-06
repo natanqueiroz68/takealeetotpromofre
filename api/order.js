@@ -468,7 +468,7 @@ module.exports = async function handler(req, res) {
         customer_name: (req.query.name || 'Customer').trim(),
         customer_email: (req.query.to || req.query.email || '').trim(),
         customer_phone: '',
-        product_id: 'dm-696tgkf59s',
+        product_id: 'dm-4566h0dmf2',
         product_name: 'Hisense 198L Chest Freezer with Seamless Frame & Boundless Door',
         product_price: 999,
         currency: 'ZAR',
