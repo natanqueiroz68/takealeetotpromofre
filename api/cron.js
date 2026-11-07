@@ -300,7 +300,8 @@ function renderStagePlainText(order, stageInfo, pDate, dDate) {
   const orderNumber = order.order_id;
   const orderDateShort = formatOrderDateShort(pDate);
   const deliveryDateLong = formatDeliveryDateLong(dDate);
-  const trackUrl = `https://takealotpromos-black.vercel.app/track.html?order=${orderNumber}&p=${pDate.getTime()}`;
+  const baseUrl = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : '') || 'https://takealeetotpromofre.vercel.app';
+  const trackUrl = `${baseUrl}/track.html?order=${orderNumber}&p=${pDate.getTime()}`;
 
   const paragraphs = stageInfo.paragraphs(orderNumber, deliveryDateLong)
     .map((p) => p.replace(/<[^>]+>/g, ''));
@@ -324,7 +325,7 @@ function renderStagePlainText(order, stageInfo, pDate, dDate) {
     `- Item: 1x Hisense 198L Chest Freezer with Seamless Frame & Boundless Door - R 999.00`,
     `- Total Paid: R 999.00`,
     ``,
-    `Need help? Visit https://takealotpromos-black.vercel.app`,
+    `Need help? Visit ${baseUrl}`,
     ``,
     `Regards,`,
     `The Takealot Team`,

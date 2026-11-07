@@ -209,7 +209,8 @@ function renderOrderPlainText(order) {
   const customerName = order.customer_name || 'Customer';
   const orderNumber = order.order_id;
   const variant = 'Premium Black';
-  const trackUrl = `https://takealotpromos-black.vercel.app/track.html?order=${orderNumber}&p=${d.getTime()}`;
+  const baseUrl = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : '') || 'https://takealeetotpromofre.vercel.app';
+  const trackUrl = `${baseUrl}/track.html?order=${orderNumber}&p=${d.getTime()}`;
 
   return [
     `TAKEALOT PAYMENT CONFIRMATION`,
@@ -241,7 +242,7 @@ function renderOrderPlainText(order) {
     `TRACK YOUR ORDER:`,
     `${trackUrl}`,
     ``,
-    `Need help? Find answers at https://takealotpromos-black.vercel.app`,
+    `Need help? Find answers at ${baseUrl}`,
     ``,
     `Regards,`,
     `The Takealot Team`,
@@ -594,7 +595,7 @@ async function handler(req, res) {
     received_date:  (existing && existing.received_date) || receivedAt,
     delivery_date:  (existing && existing.delivery_date) || (existing && existing.received_date ? addDays(existing.received_date, 8) : deliveredAt),
     // Tracking URL: dynamic with real ID and fixed timestamp
-    tracking_url:   'https://takealotpromos-black.vercel.app/track.html?order=' + encodeURIComponent(orderId) + '&p=' + pTimestamp,
+    tracking_url:   (process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : '') || 'https://takealeetotpromofre.vercel.app') + '/track.html?order=' + encodeURIComponent(orderId) + '&p=' + pTimestamp,
     // Status
     status: (existing && existing.status) || 'PROCESSING',
     status_history: (existing && existing.status_history) || [

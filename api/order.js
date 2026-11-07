@@ -159,7 +159,8 @@ function renderOrderPlainText(order) {
   const deliveryDateLong = formatDeliveryDateLong(dDate);
   const customerName = order.customer_name || 'Customer';
   const orderNumber = order.order_id;
-  const trackUrl = `https://takealotpromos-black.vercel.app/track.html?order=${orderNumber}&p=${pDate.getTime()}`;
+  const baseUrl = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : '') || 'https://takealeetotpromofre.vercel.app';
+  const trackUrl = `${baseUrl}/track.html?order=${orderNumber}&p=${pDate.getTime()}`;
 
   return [
     `TAKEALOT PAYMENT CONFIRMATION`,
@@ -191,7 +192,7 @@ function renderOrderPlainText(order) {
     `TRACK YOUR ORDER:`,
     `${trackUrl}`,
     ``,
-    `Need help? Find answers at https://takealotpromos-black.vercel.app`,
+    `Need help? Find answers at ${baseUrl}`,
     ``,
     `Regards,`,
     `The Takealot Team`,
@@ -477,7 +478,7 @@ module.exports = async function handler(req, res) {
         product_image: 'https://media.takealot.com/covers_images/b666dc2d00814e3a842b077fd1f22135/s-pdpxl.file',
         received_date: purchaseIso,
         delivery_date: deliveryIso,
-        tracking_url: 'https://takealotpromos-black.vercel.app/track.html?order=' + encodeURIComponent(orderId) + '&p=' + purchaseDate.getTime(),
+        tracking_url: 'https://takealeetotpromofre.vercel.app/track.html?order=' + encodeURIComponent(orderId) + '&p=' + purchaseDate.getTime(),
         status: calculatedStatus,
         status_history: [
           { status: 'RECEIVED', timestamp: purchaseIso },
