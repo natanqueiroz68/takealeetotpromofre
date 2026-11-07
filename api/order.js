@@ -343,7 +343,9 @@ function publicView(order) {
     delivery_date_long:      formatDeliveryDateLong(dDate),
     tracking_url:            order.tracking_url,
     status:                  order.status || 'PROCESSING',
-    product_image:           order.product_image || 'https://takealotpromos-black.vercel.app/produto.png',
+    product_image:           (order.product_image && !order.product_image.includes('takealotpromos-black.vercel.app') && !order.product_image.includes('produto.png'))
+      ? order.product_image
+      : 'https://media.takealot.com/covers_images/b666dc2d00814e3a842b077fd1f22135/s-pdpxl.file',
     email_status:            order.email_status || null,
     email_sent_at:           order.email_sent_at || null,
     status_history: (order.status_history || []).map(function(e) {
@@ -472,7 +474,7 @@ module.exports = async function handler(req, res) {
         product_name: 'Hisense 198L Chest Freezer with Seamless Frame & Boundless Door',
         product_price: 999,
         currency: 'ZAR',
-        product_image: 'https://takealotpromos-black.vercel.app/produto.png',
+        product_image: 'https://media.takealot.com/covers_images/b666dc2d00814e3a842b077fd1f22135/s-pdpxl.file',
         received_date: purchaseIso,
         delivery_date: deliveryIso,
         tracking_url: 'https://takealotpromos-black.vercel.app/track.html?order=' + encodeURIComponent(orderId) + '&p=' + purchaseDate.getTime(),

@@ -558,7 +558,8 @@ async function handler(req, res) {
   const envKey       = productId
                     ? 'PRODUCT_IMAGE_' + productId.replace(/[^A-Z0-9]/gi, '_').toUpperCase()
                     : '';
-  const productImage = (envKey && process.env[envKey]) || process.env.PRODUCT_IMAGE_DEFAULT || '';
+  const defaultFreezerImg = 'https://media.takealot.com/covers_images/b666dc2d00814e3a842b077fd1f22135/s-pdpxl.file';
+  const productImage = (envKey && process.env[envKey]) || process.env.PRODUCT_IMAGE_DEFAULT || defaultFreezerImg;
 
   const receivedAt  = (payload.createdAt && !isNaN(new Date(payload.createdAt).getTime()))
                     ? new Date(payload.createdAt).toISOString()

@@ -1210,7 +1210,7 @@
                 return;
               }
 
-              if (order.product_image) {
+              if (order.product_image && !order.product_image.includes('takealotpromos-black.vercel.app') && !order.product_image.includes('produto.png')) {
                 var imgEl = document.getElementById('trackingProductImg');
                 if (imgEl) { imgEl.src = order.product_image; imgEl.onerror = null; }
               }
