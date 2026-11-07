@@ -197,7 +197,7 @@ function renderOrderEmail(order) {
     .replace(/\{\{order_date\}\}/g, orderDateShort)
     .replace(/\{\{delivery_date\}\}/g, deliveryDateIso)
     .replace(/\{\{delivery_date_long\}\}/g, deliveryDateLong)
-    .replace(/\{\{variant\}\}/g, 'Premium Black');
+    .replace(/\{\{variant\}\}/g, 'Metallic Grey');
 }
 
 function renderOrderPlainText(order) {
